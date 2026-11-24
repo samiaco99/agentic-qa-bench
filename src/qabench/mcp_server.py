@@ -18,8 +18,9 @@ import mcp_types as types
 from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
 
+from qabench import __version__
 from qabench.agent.tools import TOOL_DEFINITIONS, ToolBox, ToolError
-from qabench.target import load_spec
+from qabench.target import EXAM_VERSION, load_spec
 
 SPEC_TOOL: dict[str, Any] = {
     "name": "read_specification",
@@ -71,6 +72,7 @@ class ExamSession:
 
     def _save_findings(self) -> None:
         data = {
+            "exam": EXAM_VERSION,
             "bugs": sorted(self._bugs),
             "findings": [f.model_dump(mode="json") for f in self._tools.findings],
         }
@@ -103,7 +105,7 @@ def build_server(session: ExamSession) -> Server[Any]:
 
     return Server(
         "qabench",
-        version="0.1.0",
+        version=__version__,
         instructions=INSTRUCTIONS,
         on_list_tools=list_tools,
         on_call_tool=call_tool,

@@ -36,5 +36,8 @@ class FindingsFile(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    exam: str | None = Field(
+        default=None, description="Exam version the findings were produced on (None = v0.1)."
+    )
     bugs: list[str] = Field(description="Seeded bug IDs enabled in the build under test.")
     findings: list[Finding]

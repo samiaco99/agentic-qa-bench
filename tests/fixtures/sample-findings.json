@@ -1,14 +1,25 @@
 {
+  "exam": "0.2",
   "bugs": [
     "cancel-does-not-restock",
     "cancel-twice-allowed",
+    "closed-sales-bypass-with-promo",
     "discount-exceeds-subtotal",
     "events-pagination-overlap",
+    "fan-can-update-event",
+    "fee-cap-ignored",
+    "idempotency-key-not-user-scoped",
+    "idempotent-replay-reserves-again",
+    "logout-revokes-wrong-session",
     "not-found-error-contract",
     "order-idor",
+    "order-price-not-snapshotted",
     "order-quantity-upper-bound",
     "oversell-by-one",
     "promo-percent-rounding",
+    "refund-ignores-discount",
+    "sold-out-events-hidden",
+    "ticket-limit-counts-cancelled",
     "welcome-promo-reuse"
   ],
   "findings": [
@@ -84,6 +95,33 @@
         { "method": "POST", "path": "/auth/login", "body": { "username": "alice", "password": "alice-pass" }, "capture": { "tok": "token" } },
         { "method": "POST", "path": "/orders", "headers": { "Authorization": "Bearer {{tok}}" }, "body": { "eventId": 3, "quantity": 1, "promoCode": "WELCOME5" } },
         { "method": "POST", "path": "/orders", "headers": { "Authorization": "Bearer {{tok}}" }, "body": { "eventId": 3, "quantity": 1, "promoCode": "WELCOME5" } }
+      ]
+    },
+    {
+      "title": "Refund after a FAN10 order pays back the undiscounted price",
+      "severity": "high",
+      "category": "calculation",
+      "spec_rule": "The service fee is non-refundable: refundCents = totalCents - feeCents",
+      "expected": "refundCents 6750 (6900 paid minus the 150 fee)",
+      "actual": "refundCents 7500",
+      "repro_steps": [
+        { "method": "POST", "path": "/auth/login", "body": { "username": "alice", "password": "alice-pass" }, "capture": { "tok": "token" } },
+        { "method": "POST", "path": "/orders", "headers": { "Authorization": "Bearer {{tok}}" }, "body": { "eventId": 2, "quantity": 1, "promoCode": "FAN10" }, "capture": { "oid": "id" } },
+        { "method": "POST", "path": "/orders/{{oid}}/cancel", "headers": { "Authorization": "Bearer {{tok}}" } }
+      ]
+    },
+    {
+      "title": "Admin account can read any fan's order",
+      "severity": "critical",
+      "category": "security",
+      "spec_rule": "GET /orders/{id} - Otherwise 404 code not_found",
+      "expected": "404 for an order the caller does not own",
+      "actual": "200 with Alice's order for the admin",
+      "repro_steps": [
+        { "method": "POST", "path": "/auth/login", "body": { "username": "alice", "password": "alice-pass" }, "capture": { "tok": "token" } },
+        { "method": "POST", "path": "/orders", "headers": { "Authorization": "Bearer {{tok}}" }, "body": { "eventId": 4, "quantity": 2 }, "capture": { "oid": "id" } },
+        { "method": "POST", "path": "/auth/login", "body": { "username": "admin", "password": "admin-pass" }, "capture": { "admin": "token" } },
+        { "method": "GET", "path": "/orders/{{oid}}", "headers": { "Authorization": "Bearer {{admin}}" } }
       ]
     }
   ]

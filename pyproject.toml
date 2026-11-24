@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentic-qa-bench"
-version = "0.1.0"
+version = "0.2.0"
 description = "A benchmark that measures whether an AI QA agent finds real bugs: seeded defects, differential replay oracle, precision/recall/cost scorecard."
 readme = "README.md"
 requires-python = ">=3.12"

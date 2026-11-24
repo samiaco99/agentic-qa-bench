@@ -41,17 +41,28 @@ flowchart LR
     scorer --> card[scorecard.md + result.json]
 ```
 
-1. **Target.** A small ticketing API (FastAPI). Ten defects can be switched on: IDOR,
-   promo abuse, rounding, oversell, broken restock, a state-machine hole, a boundary off by
-   one, pagination overlap, and an error-contract break. The agent never sees which ones.
-2. **Agent.** Claude gets only the product spec and three tools: explore with HTTP
+1. **Target.** A small ticketing API (FastAPI) with 20 defects that can be switched on.
+   The agent never sees which ones are on.
+   - **Core tier (12):** IDOR, promo abuse, rounding, oversell, a state-machine hole, a
+     boundary off by one, and similar bugs. The direct test of the broken rule exposes
+     them.
+   - **Deep tier (8):** the direct test of the rule passes. These bugs need extra state or
+     two rules together: a logout that kills the wrong session, idempotency keys leaking
+     across users, refunds that ignore the discount, prices rewritten after an admin
+     change.
+2. **Decoys.** Six behaviours the spec requires that look like bugs, for example an admin
+   reading any order, or an old token still working after a new login. Reporting one is a
+   false positive, and the scorecard names the trap.
+3. **Agent.** Claude gets only the product spec and three tools: explore with HTTP
    requests, dry-run a reproduction on a fresh instance, and file a structured bug report.
-3. **Oracle.** The app is deterministic, so replaying a finding's steps on the clean build
+4. **Oracle.** The app is deterministic, so replaying a finding's steps on the clean build
    and on the buggy build gives identical responses unless a seeded bug is involved.
-   Replaying on single-bug builds tells *which* bug a finding demonstrates. No LLM judge is
-   involved.
-4. **Scorecard.** Recall, precision, F1, invalid repros, duplicates, severity agreement,
-   tokens, and estimated cost, as Markdown and JSON.
+   Replaying on single-bug builds tells *which* bug a finding demonstrates. Replaying a
+   false positive on builds where one decoy is flipped tells *which* trap it fell into. No
+   LLM judge is involved.
+5. **Scorecard.** Recall overall and per tier, precision, decoys taken, F1, invalid
+   repros, duplicates, severity agreement, tokens, and estimated cost, as Markdown and
+   JSON.
 
 Design details and threats to validity: [docs/benchmark-design.md](docs/benchmark-design.md).
 
@@ -72,6 +83,7 @@ Run the built-in agent (uses the Claude API and costs money):
 echo "ANTHROPIC_API_KEY=sk-ant-..." > .env         # git-ignored; or export the variable
 qabench run --max-cost 1.50                        # Claude Opus 5.5, effort high, all bugs
 qabench run --model claude-sonnet-5-5 --effort medium --max-turns 40 --max-cost 0.75
+qabench run --bugs deep --max-cost 0.50            # only the deep tier switched on
 qabench run --bugs none                            # clean build: measures hallucinated bugs
 ```
 
@@ -98,18 +110,28 @@ The agent must be isolated from this repository, or it can read the answers. See
 
 | Command | Purpose |
 | --- | --- |
-| `qabench run [--model] [--effort] [--bugs] [--max-turns] [--max-cost]` | Run the built-in agent against a build and score it |
+| `qabench run [--model] [--effort] [--bugs] [--max-turns] [--max-cost]` | Run the built-in agent against a build and score it. `--bugs`: `all`, `none`, `core`, `deep`, or IDs |
 | `qabench mcp [--bugs] [--out]` | Serve the exam over MCP for any MCP-capable agent |
 | `qabench score FILE [--bugs] [--agent] [--save]` | Score saved findings without calling the API |
-| `qabench bugs` | List the seeded bugs (spoilers) |
+| `qabench bugs` | List the seeded bugs and decoys (spoilers) |
 | `qabench spec` | Print the specification the agent receives |
 | `qabench serve [--bugs] [--port]` | Serve the target API locally for manual or Playwright testing |
 
 ## Results
 
-First runs, 24 November 2026, with all ten seeded bugs enabled. Costs are estimates from
-token counts ([`pricing.py`](src/qabench/pricing.py)). Every run, with its scorecard,
-findings, and tool-call transcript, is in [`results/published/`](results/published/).
+Costs are estimates from token counts ([`pricing.py`](src/qabench/pricing.py)). Every
+run, with its scorecard, findings, and tool-call transcript, is in
+[`results/published/`](results/published/), one folder per exam version.
+
+### Exam v0.2
+
+No published runs yet.
+
+### Exam v0.1 (24 November 2026)
+
+Ten seeded bugs, all enabled, no deep tier, no decoys. The exam is preserved at git tag
+[`v0.1.0`](https://github.com/samiaco99/agentic-qa-bench/tree/v0.1.0), so these runs
+([`results/published/v0.1/`](results/published/v0.1/)) can be re-scored exactly.
 
 | Agent | Runs | Bugs found | Precision | Severity agreement | Est. cost per run | Time per run |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -127,9 +149,9 @@ What the numbers say:
   Here the agent has both, and every report it filed was real. Six runs is a small sample.
 - **The exam is too easy for frontier models.** Sonnet and Opus both scored 100%. At that
   ceiling the benchmark cannot rank them on finding bugs. It only separates them on cost
-  (Opus cost about 3× as much) and on severity judgment. The next version needs harder
-  defects (see the roadmap). A benchmark only earns trust when someone checks whether it
-  still discriminates.
+  (Opus cost about 3× as much) and on severity judgment. A benchmark only earns trust
+  when someone checks whether it still discriminates. This is why v0.2 adds the deep tier
+  and the decoys.
 - **Single runs mislead.** Haiku missed a different set of bugs in each run:
   `discount-exceeds-subtotal` and `not-found-error-contract` in the first,
   `events-pagination-overlap` and `order-quantity-upper-bound` in the second, and only
@@ -139,14 +161,17 @@ What the numbers say:
 
 The verdict types are defined in [docs/benchmark-design.md](docs/benchmark-design.md).
 [`tests/fixtures/sample-findings.json`](tests/fixtures/sample-findings.json) is a
-hand-written file with one example of each verdict, including a false positive that
-repeats the SauceDemo mistake: it reports a required `401` as a defect.
+hand-written v0.2 file with one example of each verdict. Two of its false positives repeat
+the SauceDemo mistake. One reports a required `401` as a defect. The other calls the
+admin's spec-granted read access a critical security hole, and the scorer blames it on
+the `admin-reads-any-order` decoy.
 
 ## Project structure
 
 ```text
 src/qabench/
-  target/      system under test: FastAPI app, deterministic store, spec.md, bug registry
+  target/      system under test: FastAPI app, deterministic store, spec.md,
+               bug registry (bugs.py) and decoy registry (decoys.py)
   agent/       tool definitions, prompts, and the agentic loop
   mcp_server.py  the same exam served over MCP
   repro.py     reproduction steps and the deterministic replay engine
@@ -154,7 +179,7 @@ src/qabench/
   report.py    Markdown and JSON scorecards
   pricing.py   token-cost estimates
   cli.py       qabench command
-tests/         oracle validity, seeded-bug validity, scoring, replay, and loop tests
+tests/         oracle, seeded-bug, and decoy validity; scoring, replay, and loop tests
 docs/          benchmark design and threats to validity
 ```
 
@@ -162,8 +187,15 @@ docs/          benchmark design and threats to validity
 
 - **Test the test.** The suite proves the oracle before trusting it. The clean build
   conforms to the spec. Every seeded bug is observable, isolated (no bug masks or
-  impersonates another), and still visible with all bugs on. The canonical repros score
-  100%.
+  impersonates another), and still visible with all bugs on. Every decoy trap is a false
+  positive on every bug build and is blamed on exactly one decoy. The canonical repros
+  score 100%.
+- **Measure the failure you care about.** My SauceDemo prototype failed by reporting
+  intended behaviour as a bug. Decoys turn that failure into a number, and the flipped
+  builds name which trap the agent fell into.
+- **Versioned exams.** Scores from different exam versions are not comparable, so the
+  version is stored in every result file, `qabench score` warns on a mismatch, and each
+  version is tagged in git.
 - **Deterministic oracle over LLM-as-judge.** Differential replay is reproducible, free to
   re-run, and cannot be talked into agreeing with the agent.
 - **Reproducibility is scored.** A report a developer cannot replay counts against the
@@ -192,9 +224,9 @@ docs/          benchmark design and threats to validity
 ## Roadmap
 
 - [x] **Clean-build noise baseline.** Haiku 5.5 filed 0 reports on the bug-free build.
-- [ ] **A harder exam (v0.2).** Frontier models saturate v0.1. Planned additions: defects
-      that need long state sequences, rules that interact, data-dependent bugs, and
-      decoys (behaviour that looks wrong but the spec allows) to stress precision.
+- [x] **A harder exam (v0.2).** Frontier models saturated v0.1. v0.2 adds a deep tier of
+      eight bugs that need state sequences, a second user or session, or two interacting
+      rules, plus six decoys to stress precision.
 - [ ] **Validated test generation.** The agent turns confirmed findings into pytest
       regression tests. A test is accepted only if it passes on the clean build and fails
       on the buggy one, which is mutation testing applied to AI-written tests.
@@ -205,11 +237,12 @@ docs/          benchmark design and threats to validity
 
 ## Known limitations
 
-A single run is an anecdote, because LLM agents are non-deterministic. v0.1 is saturated by
-frontier models, so it ranks them on cost and severity judgment, not on bug-finding. A
-genuine defect in the clean build would be scored as a false positive. The bug registry is public, so models
-trained later could be contaminated. More detail is in
-[docs/benchmark-design.md](docs/benchmark-design.md#threats-to-validity).
+A single run is an anecdote, because LLM agents are non-deterministic. v0.1 was saturated
+by frontier models. Whether v0.2 discriminates better has to be shown with repeated runs.
+A false positive is blamed on a decoy by what its repro does, not by what its text claims.
+A genuine defect in the clean build would be scored as a false positive. The bug and
+decoy registries are public, so models trained later could be contaminated. More detail
+is in [docs/benchmark-design.md](docs/benchmark-design.md#threats-to-validity).
 
 ## License
 

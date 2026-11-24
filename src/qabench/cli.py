@@ -16,8 +16,11 @@ from qabench.findings import FindingsFile
 from qabench.pricing import PRICES
 from qabench.report import render_markdown, to_json
 from qabench.scoring import score
-from qabench.target import load_spec
+from qabench.target import EXAM_VERSION, load_spec
 from qabench.target.bugs import BUGS, parse_bug_selection
+from qabench.target.decoys import DECOYS
+
+BUGS_HELP = "all | none | core | deep | comma-separated bug IDs"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,13 +33,13 @@ def main(argv: list[str] | None = None) -> int:
     run_p = sub.add_parser("run", help="run the built-in Claude API agent and score it")
     run_p.add_argument("--model", default=AgentConfig.model)
     run_p.add_argument("--effort", default=AgentConfig.effort, choices=get_args(Effort))
-    run_p.add_argument("--bugs", default="all", help="all | none | comma-separated bug IDs")
+    run_p.add_argument("--bugs", default="all", help=BUGS_HELP)
     run_p.add_argument("--max-turns", type=int, default=AgentConfig.max_turns)
     run_p.add_argument("--max-cost", type=float, help="stop once estimated spend reaches USD")
     run_p.add_argument("--out", type=Path, default=Path("results"))
 
     mcp_p = sub.add_parser("mcp", help="serve the exam over MCP (stdio) for any MCP agent")
-    mcp_p.add_argument("--bugs", default="all")
+    mcp_p.add_argument("--bugs", default="all", help=BUGS_HELP)
     mcp_p.add_argument("--out", type=Path, help="output folder (default: results/<stamp>-mcp)")
 
     score_p = sub.add_parser("score", help="score saved findings without calling the API")
@@ -45,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     score_p.add_argument("--agent", help="label for the agent, shown in the scorecard")
     score_p.add_argument("--save", action="store_true", help="write scorecard next to the file")
 
-    sub.add_parser("bugs", help="list seeded bugs (spoilers)")
+    sub.add_parser("bugs", help="list seeded bugs and decoys (spoilers)")
     sub.add_parser("spec", help="print the specification the agent receives")
 
     serve_p = sub.add_parser("serve", help="run the target API locally for manual testing")
@@ -61,8 +64,12 @@ def main(argv: list[str] | None = None) -> int:
         case "score":
             return _score(args)
         case "bugs":
+            print(f"Exam v{EXAM_VERSION}: {len(BUGS)} seeded bugs\n")
             for bug in BUGS.values():
-                print(f"{bug.id:28} {bug.severity:9} {bug.category:14} {bug.title}")
+                print(f"{bug.id:32} {bug.tier:5} {bug.severity:9} {bug.category:14} {bug.title}")
+            print(f"\n{len(DECOYS)} decoys (spec-required behaviour that looks like a bug)\n")
+            for decoy in DECOYS.values():
+                print(f"{decoy.id:32} {decoy.title}")
             return 0
         case "spec":
             print(load_spec())
@@ -133,6 +140,13 @@ def _mcp(args: argparse.Namespace) -> int:
 
 def _score(args: argparse.Namespace) -> int:
     data = FindingsFile.model_validate_json(args.findings.read_text(encoding="utf-8"))
+    produced_on = data.exam or "0.1"
+    if produced_on != EXAM_VERSION:
+        print(
+            f"warning: these findings come from exam v{produced_on} but are scored against "
+            f"exam v{EXAM_VERSION}; reproduce old scores from git tag v{produced_on}.0",
+            file=sys.stderr,
+        )
     bugs = parse_bug_selection(args.bugs) if args.bugs else parse_bug_selection(",".join(data.bugs))
     card = score(data.findings, bugs)
     markdown = render_markdown(card, agent=args.agent)

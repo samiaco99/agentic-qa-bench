@@ -11,6 +11,7 @@ from mcp import Client
 from qabench.findings import FindingsFile
 from qabench.mcp_server import ExamSession, build_server
 from qabench.scoring import Verdict, score
+from qabench.target import EXAM_VERSION
 from qabench.target.bugs import ALL_BUG_IDS, BUGS
 
 pytestmark = pytest.mark.anyio
@@ -66,7 +67,7 @@ async def test_exam_over_mcp_produces_a_scorable_findings_file(tmp_path: Path) -
         session.close()
 
     saved = FindingsFile.model_validate_json(session.findings_path.read_text(encoding="utf-8"))
-    assert saved.bugs == sorted(ALL_BUG_IDS)
+    assert (saved.exam, saved.bugs) == (EXAM_VERSION, sorted(ALL_BUG_IDS))
     card = score(saved.findings, frozenset(saved.bugs))
     assert [(s.verdict, s.attributed_to) for s in card.scored] == [
         (Verdict.CONFIRMED, ("order-idor",))

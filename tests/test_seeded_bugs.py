@@ -43,6 +43,9 @@ def test_canonical_repro_still_reveals_bug_with_all_bugs_enabled(bug_id: str) ->
 def test_parse_bug_selection() -> None:
     assert parse_bug_selection("all") == ALL_BUG_IDS
     assert parse_bug_selection("none") == frozenset()
+    core, deep = parse_bug_selection("core"), parse_bug_selection("deep")
+    assert (len(core), len(deep)) == (12, 8)
+    assert core | deep == ALL_BUG_IDS
     assert parse_bug_selection("order-idor, oversell-by-one") == {"order-idor", "oversell-by-one"}
     with pytest.raises(ValueError, match="unknown bug"):
         parse_bug_selection("order-idor,not-a-bug")

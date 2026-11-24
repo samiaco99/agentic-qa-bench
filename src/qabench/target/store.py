@@ -33,6 +33,7 @@ class Event:
     price_cents: int
     capacity: int
     remaining: int
+    sales_open: bool = True
 
 
 @dataclass
@@ -43,9 +44,19 @@ class Order:
     quantity: int
     unit_price_cents: int
     discount_cents: int
+    fee_cents: int
     total_cents: int
     promo_code: str | None
     status: OrderStatus
+    refund_cents: int | None = None
+
+
+@dataclass(frozen=True)
+class IdempotentRequest:
+    """What an ``Idempotency-Key`` was first used for: the order and the request body."""
+
+    order_id: int
+    fingerprint: tuple[int, int, str | None]
 
 
 _SEED_USERS = (
@@ -86,7 +97,15 @@ _SEED_EVENTS = (
     ("Motor Fan Day", "Circuito delle Colline, Scarperia", "2027-03-07T09:00:00Z", 6000, 60),
     ("Closed-Door Training Session", "Training Ground, Carnago", "2027-03-11T11:00:00Z", 9900, 5),
     ("Esports Finals", "Arena Digitale, Milano", "2027-03-20T16:00:00Z", 1299, 90),
+    (
+        "Season Finale: Milano Lions vs Roma Wolves",
+        "Stadio Nord, Milano",
+        "2027-05-23T18:00:00Z",
+        8500,
+        600,
+    ),
 )
+_SALES_CLOSED_EVENT_IDS = frozenset({13})
 
 
 @dataclass
@@ -96,6 +115,8 @@ class Store:
     orders: dict[int, Order] = field(default_factory=dict)
     sessions: dict[str, int] = field(default_factory=dict)
     welcome_used_by: set[int] = field(default_factory=set)
+    # (user id, key) -> first use. The user id is None when keys are (wrongly) global.
+    idempotency: dict[tuple[int | None, str], IdempotentRequest] = field(default_factory=dict)
     _next_order_id: int = 1
     _token_counter: int = 0
 
@@ -105,7 +126,16 @@ class Store:
         for user in _SEED_USERS:
             store.users[user.id] = User(user.id, user.username, user.password, user.role)
         for index, (name, venue, starts_at, price, capacity) in enumerate(_SEED_EVENTS, 1):
-            store.events[index] = Event(index, name, venue, starts_at, price, capacity, capacity)
+            store.events[index] = Event(
+                index,
+                name,
+                venue,
+                starts_at,
+                price,
+                capacity,
+                capacity,
+                sales_open=index not in _SALES_CLOSED_EVENT_IDS,
+            )
         return store
 
     def find_user(self, username: str) -> User | None:
@@ -117,6 +147,13 @@ class Store:
         token = digest.hexdigest()[:32]
         self.sessions[token] = user.id
         return token
+
+    def tokens_of(self, user_id: int) -> list[str]:
+        """The user's valid tokens, oldest first."""
+        return [token for token, owner in self.sessions.items() if owner == user_id]
+
+    def revoke(self, token: str) -> None:
+        self.sessions.pop(token, None)
 
     def next_order_id(self) -> int:
         order_id = self._next_order_id

@@ -6,7 +6,9 @@ from typing import Any
 
 from qabench.agent import AgentRun
 from qabench.scoring import Scorecard, Verdict
+from qabench.target import EXAM_VERSION
 from qabench.target.bugs import BUGS
+from qabench.target.decoys import DECOYS
 
 
 def _pct(value: float | None) -> str:
@@ -14,9 +16,10 @@ def _pct(value: float | None) -> str:
 
 
 def render_markdown(card: Scorecard, run: AgentRun | None = None, agent: str | None = None) -> str:
-    lines = ["# QA agent scorecard", ""]
+    lines = ["# QA agent scorecard", "", f"- **Exam:** v{EXAM_VERSION}"]
     if agent:
-        lines += [f"- **Agent:** {agent}", ""]
+        lines.append(f"- **Agent:** {agent}")
+    lines.append("")
     if run is not None:
         cost = run.usage.estimated_cost(run.config.model)
         lines += [
@@ -36,24 +39,43 @@ def render_markdown(card: Scorecard, run: AgentRun | None = None, agent: str | N
         "| Metric | Value |",
         "| --- | --- |",
         f"| Recall (seeded bugs found) | {len(card.detected)}/{seeded} ({_pct(card.recall)}) |",
+        *(
+            f"| Recall, {tier} tier | {found}/{total} ({_pct(found / total)}) |"
+            for tier, (found, total) in card.recall_by_tier().items()
+        ),
         f"| Precision (confirmed findings) | {card.count(Verdict.CONFIRMED)}/"
         f"{card.total_findings} ({_pct(card.precision)}) |",
         f"| F1 | {_pct(card.f1)} |",
         f"| False positives | {card.count(Verdict.FALSE_POSITIVE)} |",
+        f"| Decoys taken | {len(card.decoys_taken)}/{len(DECOYS)} |",
         f"| Invalid repros | {card.count(Verdict.INVALID_REPRO)} |",
         f"| Duplicate reports | {card.duplicates} |",
         f"| Severity agreement | {_pct(card.severity_agreement)} |",
         "",
         "## Seeded bugs",
         "",
-        "| Bug | Category | Severity | Found by |",
-        "| --- | --- | --- | --- |",
+        "| Bug | Tier | Category | Severity | Found by |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for bug_id in card.bugs_in_build:
         bug = BUGS[bug_id]
         found = card.detected.get(bug_id)
         by = ", ".join(f"#{i + 1}" for i in found) if found else "**missed**"
-        lines.append(f"| `{bug_id}` | {bug.category} | {bug.severity} | {by} |")
+        lines.append(f"| `{bug_id}` | {bug.tier} | {bug.category} | {bug.severity} | {by} |")
+
+    lines += [
+        "",
+        "## Decoys",
+        "",
+        "Behaviour the spec requires that a careless tester might report as a bug.",
+        "",
+        "| Decoy | Reported as a bug by |",
+        "| --- | --- |",
+    ]
+    for decoy_id in DECOYS:
+        taken = card.decoys_taken.get(decoy_id)
+        by = ", ".join(f"**#{i + 1}**" for i in taken) if taken else "-"
+        lines.append(f"| `{decoy_id}` | {by} |")
 
     lines += ["", "## Findings", ""]
     if not card.scored:
@@ -67,6 +89,8 @@ def render_markdown(card: Scorecard, run: AgentRun | None = None, agent: str | N
             demonstrates = ", ".join(f"`{b}`" for b in s.attributed_to) or (
                 "bug interaction" if s.verdict is Verdict.CONFIRMED else "-"
             )
+            if s.decoys:
+                demonstrates = "decoy " + ", ".join(f"`{d}`" for d in s.decoys)
             if s.duplicate:
                 demonstrates += " (duplicate)"
             title = s.finding.title.replace("|", "\\|")
@@ -80,19 +104,30 @@ def render_markdown(card: Scorecard, run: AgentRun | None = None, agent: str | N
 
 def to_json(card: Scorecard, run: AgentRun | None = None) -> dict[str, Any]:
     data: dict[str, Any] = {
+        "exam": EXAM_VERSION,
         "bugs": list(card.bugs_in_build),
         "score": {
             "recall": card.recall,
+            "recall_by_tier": {
+                tier: {"found": found, "total": total}
+                for tier, (found, total) in card.recall_by_tier().items()
+            },
             "precision": card.precision,
             "f1": card.f1,
             "detected": {k: [i + 1 for i in v] for k, v in card.detected.items()},
             "missed": [b for b in card.bugs_in_build if b not in card.detected],
             "false_positives": card.count(Verdict.FALSE_POSITIVE),
+            "decoys_taken": {k: [i + 1 for i in v] for k, v in card.decoys_taken.items()},
             "invalid_repros": card.count(Verdict.INVALID_REPRO),
             "duplicates": card.duplicates,
             "severity_agreement": card.severity_agreement,
             "verdicts": [
-                {"finding": s.index + 1, "verdict": s.verdict, "attributed_to": s.attributed_to}
+                {
+                    "finding": s.index + 1,
+                    "verdict": s.verdict,
+                    "attributed_to": s.attributed_to,
+                    "decoys": s.decoys,
+                }
                 for s in card.scored
             ],
         },

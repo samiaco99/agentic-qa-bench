@@ -6,4 +6,6 @@
 - `result.json` — metrics, verdicts, findings, token usage (re-scorable with `qabench score`)
 - `transcript.jsonl` — every tool call the agent made, for auditing
 
-Local runs are git-ignored. Copy runs worth publishing into `results/published/`.
+Local runs are git-ignored. Copy runs worth publishing into `results/published/v<exam>/`
+(the exam version is in each `result.json`), because scores from different exam versions
+are not comparable.
