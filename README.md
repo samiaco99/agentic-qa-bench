@@ -123,9 +123,40 @@ Costs are estimates from token counts ([`pricing.py`](src/qabench/pricing.py)). 
 run, with its scorecard, findings, and tool-call transcript, is in
 [`results/published/`](results/published/), one folder per exam version.
 
-### Exam v0.2
+### Exam v0.2 (24 November 2026)
 
-No published runs yet.
+All 20 seeded bugs enabled, the six decoys in place, the default 60-turn budget. Runs:
+[`results/published/v0.2/`](results/published/v0.2/).
+
+| Agent | Runs | Bugs found | Core tier | Deep tier | Precision | Decoys taken | Severity agreement | Est. cost per run | Time per run |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Claude Sonnet 5.5, effort high | 1 | 15/20 | 11/12 | 4/8 | 15/15 | 0/6 | 85% | $0.43 | 136 s |
+| Claude Haiku 5.5, effort medium | 3 | 10, 11, 12 of 20 | 8, 8, 9 of 12 | 2, 3, 3 of 8 | 100% in each run | 0/6 in each run | 78–91% | $0.02 | 82–98 s |
+
+What the numbers say:
+
+- **v0.2 separates models that v0.1 could not.** Sonnet dropped from 10/10 to 15/20, and
+  found half of the deep tier. The gap to Haiku widened, from 80–90% against 100% on
+  v0.1, to 50–60% against 75% on v0.2.
+- **The deep tier works as designed, and agent summaries overstate coverage.** Sonnet's
+  own summary lists "login, logout and token revocation" and "the `sales_closed`
+  checks" as tested with no problems. It ran the direct test of each rule, which passes,
+  and missed the deep bug behind both (`logout-revokes-wrong-session`,
+  `closed-sales-bypass-with-promo`). Reading an agent's summary is not the same as
+  measuring its coverage.
+- **Three bugs were missed by every run:** `closed-sales-bypass-with-promo`,
+  `sold-out-events-hidden`, and the core-tier `events-pagination-overlap`, which five of
+  six v0.1 runs had found. The transcripts show why. Every agent fetched the event list as
+  one page of 50 to look up IDs, then tested only the paging bounds, never two adjacent
+  pages. With a spec twice as long, pagination lost attention.
+- **Precision stayed at 100%, and no run took a decoy.** In this setup Claude models fail
+  by missing bugs, not by inventing them. The decoys are there to catch agents and prompts
+  that over-report, which these four runs did not.
+- **Cost versus quality.** Sonnet found 3 to 5 more bugs than Haiku, at about 20 times
+  the cost per run.
+
+One Sonnet run and three Haiku runs are a small sample. Opus 5.5 and a clean-build
+baseline have not been run on v0.2 yet.
 
 ### Exam v0.1 (24 November 2026)
 
@@ -230,16 +261,17 @@ docs/          benchmark design and threats to validity
 - [ ] **Validated test generation.** The agent turns confirmed findings into pytest
       regression tests. A test is accepted only if it passes on the clean build and fails
       on the buggy one, which is mutation testing applied to AI-written tests.
-- [ ] **Repeated-run comparisons.** N runs per model and effort, reported as mean and
-      spread, plus a quality-versus-cost frontier.
+- [ ] **Repeated-run comparisons.** N runs per model and effort on v0.2, Opus 5.5
+      included, reported as mean and spread, plus a quality-versus-cost frontier.
 - [ ] **UI target.** Browser exploration through Playwright, with the same oracle applied
       to UI-level traces.
 
 ## Known limitations
 
 A single run is an anecdote, because LLM agents are non-deterministic. v0.1 was saturated
-by frontier models. Whether v0.2 discriminates better has to be shown with repeated runs.
-A false positive is blamed on a decoy by what its repro does, not by what its text claims.
+by frontier models. The first v0.2 runs discriminate, but four runs from two models are
+a small sample, and Opus 5.5 has not been run on v0.2. No run has taken a decoy yet. A
+false positive is blamed on a decoy by what its repro does, not by what its text claims.
 A genuine defect in the clean build would be scored as a false positive. The bug and
 decoy registries are public, so models trained later could be contaminated. More detail
 is in [docs/benchmark-design.md](docs/benchmark-design.md#threats-to-validity).

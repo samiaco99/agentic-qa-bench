@@ -152,9 +152,12 @@ results can be reproduced exactly.
 ## Threats to validity
 
 - **Ceiling effect.** v0.1 was saturated by frontier models (both found 10/10). The deep
-  tier is the response. Whether v0.2 discriminates is an empirical question that only
-  repeated runs answer. If frontier models also saturate the deep tier, v0.3 needs harder
-  bugs again.
+  tier is the response. In the first v0.2 runs Sonnet 5.5 found 4 of 8 deep bugs and
+  Haiku 5.5 found 2 or 3. Opus 5.5 has not been measured on v0.2 yet. If frontier models
+  saturate the deep tier, v0.3 needs harder bugs again.
+- **Decoys not yet exercised.** No v0.2 run so far reported a decoy, so the decoys have
+  not yet been shown to separate agents. They are meant for agents or prompts that
+  over-report, which the runs so far do not include.
 - **Decoy attribution is behavioural.** A false positive is blamed on a decoy when its
   repro *exercises* the decoy's behaviour, not when the report's text *claims* it. Each
   flipped build changes one narrow behaviour, so this rarely misfires, but read the

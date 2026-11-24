@@ -1,0 +1,601 @@
+{
+  "exam": "0.2",
+  "bugs": [
+    "cancel-does-not-restock",
+    "cancel-twice-allowed",
+    "closed-sales-bypass-with-promo",
+    "discount-exceeds-subtotal",
+    "events-pagination-overlap",
+    "fan-can-update-event",
+    "fee-cap-ignored",
+    "idempotency-key-not-user-scoped",
+    "idempotent-replay-reserves-again",
+    "logout-revokes-wrong-session",
+    "not-found-error-contract",
+    "order-idor",
+    "order-price-not-snapshotted",
+    "order-quantity-upper-bound",
+    "oversell-by-one",
+    "promo-percent-rounding",
+    "refund-ignores-discount",
+    "sold-out-events-hidden",
+    "ticket-limit-counts-cancelled",
+    "welcome-promo-reuse"
+  ],
+  "score": {
+    "recall": 0.5,
+    "recall_by_tier": {
+      "core": {
+        "found": 8,
+        "total": 12
+      },
+      "deep": {
+        "found": 2,
+        "total": 8
+      }
+    },
+    "precision": 1.0,
+    "f1": 0.6666666666666666,
+    "detected": {
+      "fan-can-update-event": [
+        1
+      ],
+      "refund-ignores-discount": [
+        2
+      ],
+      "discount-exceeds-subtotal": [
+        3,
+        4
+      ],
+      "welcome-promo-reuse": [
+        3
+      ],
+      "fee-cap-ignored": [
+        5
+      ],
+      "order-quantity-upper-bound": [
+        6
+      ],
+      "oversell-by-one": [
+        7
+      ],
+      "order-price-not-snapshotted": [
+        8
+      ],
+      "promo-percent-rounding": [
+        9
+      ],
+      "not-found-error-contract": [
+        10
+      ]
+    },
+    "missed": [
+      "cancel-does-not-restock",
+      "cancel-twice-allowed",
+      "closed-sales-bypass-with-promo",
+      "events-pagination-overlap",
+      "idempotency-key-not-user-scoped",
+      "idempotent-replay-reserves-again",
+      "logout-revokes-wrong-session",
+      "order-idor",
+      "sold-out-events-hidden",
+      "ticket-limit-counts-cancelled"
+    ],
+    "false_positives": 0,
+    "decoys_taken": {},
+    "invalid_repros": 0,
+    "duplicates": 1,
+    "severity_agreement": 0.7777777777777778,
+    "verdicts": [
+      {
+        "finding": 1,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "fan-can-update-event"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 2,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "refund-ignores-discount"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 3,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "discount-exceeds-subtotal",
+          "welcome-promo-reuse"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 4,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "discount-exceeds-subtotal"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 5,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "fee-cap-ignored"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 6,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "order-quantity-upper-bound"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 7,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "oversell-by-one"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 8,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "order-price-not-snapshotted"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 9,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "promo-percent-rounding"
+        ],
+        "decoys": []
+      },
+      {
+        "finding": 10,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "not-found-error-contract"
+        ],
+        "decoys": []
+      }
+    ]
+  },
+  "findings": [
+    {
+      "title": "Non-admin fan can update event price and capacity (PATCH /events/{id})",
+      "severity": "critical",
+      "category": "security",
+      "spec_rule": "\"### Update \u2014 PATCH /events/{id} (admin only) ... An authenticated caller who is not an admin gets 403 code forbidden.\"",
+      "expected": "A fan's PATCH /events/1 returns 403 with code \"forbidden\" and the event is unchanged.",
+      "actual": "The fan (alice) PATCH returns 200 with the updated event; priceCents is changed to 100 and persisted.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/events/1",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        },
+        {
+          "method": "PATCH",
+          "path": "/events/1",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "priceCents": 100
+          },
+          "capture": {}
+        },
+        {
+          "method": "GET",
+          "path": "/events/1",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Refund on cancellation equals subtotal instead of totalCents minus feeCents",
+      "severity": "high",
+      "category": "calculation",
+      "spec_rule": "\"The service fee is non-refundable: refundCents = totalCents - feeCents.\"",
+      "expected": "Order with quantity 2 on event 2 with FAN10 (subtotal 15000, discount 1500, fee 300, total 13800) cancels with refundCents 13500.",
+      "actual": "refundCents is 15000 (the subtotal, ignoring the discount and retaining the fee would be 13500). The customer is over-refunded by 1500 cents.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "bob",
+            "password": "bob-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 2,
+            "quantity": 2,
+            "promoCode": "FAN10"
+          },
+          "capture": {
+            "oid": "id"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders/{{oid}}/cancel",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "WELCOME5 promo can be redeemed more than once by the same user",
+      "severity": "high",
+      "category": "business-rule",
+      "spec_rule": "\"WELCOME5 \u2014 500 cents off the subtotal. Each user can redeem it once in total (a later cancellation does not give it back). A second redemption returns 400 code promo_already_used.\"",
+      "expected": "The second WELCOME5 order returns 400 promo_already_used.",
+      "actual": "Both orders are created with 201 and discountCents 500.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 3,
+            "quantity": 1,
+            "promoCode": "WELCOME5"
+          },
+          "capture": {}
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 3,
+            "quantity": 1,
+            "promoCode": "WELCOME5"
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Promo discount can exceed the subtotal, producing negative order totals",
+      "severity": "high",
+      "category": "calculation",
+      "spec_rule": "\"discountCents comes from the promo code and never exceeds the subtotal.\" and \"totalCents = subtotal - discountCents + feeCents.\"",
+      "expected": "Ticket price 300 cents, quantity 1, WELCOME5: discountCents capped at 300, feeCents 150, totalCents 150.",
+      "actual": "discountCents 500 and totalCents -50 (negative total; the customer would be paid to buy a ticket).",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 3,
+            "quantity": 1,
+            "promoCode": "WELCOME5"
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Service fee cap of 600 cents per order is not applied",
+      "severity": "high",
+      "category": "calculation",
+      "spec_rule": "\"feeCents is a service fee of 150 cents per ticket, at most 600 cents per order.\"",
+      "expected": "Order of 6 tickets on event 2 has feeCents 600 and totalCents 15000*... = 45000 - 0 + 600 = 45600.",
+      "actual": "feeCents is 900 (6 \u00d7 150) and totalCents is 45900.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "bob",
+            "password": "bob-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 2,
+            "quantity": 6
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Quantity of 7 accepted when the maximum per order is 6",
+      "severity": "high",
+      "category": "validation",
+      "spec_rule": "\"quantity must be between 1 and 6 inclusive, otherwise 400 code invalid_quantity.\"",
+      "expected": "POST /orders with quantity 7 returns 400 invalid_quantity and no order is created.",
+      "actual": "201 Created; an order for 7 tickets is confirmed with feeCents 1050 and remaining is reduced by 7.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 2,
+            "quantity": 7
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Orders are accepted beyond event capacity; remaining goes negative (sold_out not enforced)",
+      "severity": "high",
+      "category": "inventory",
+      "spec_rule": "\"6. quantity must not exceed the event's remaining, otherwise 409 code sold_out. ... remaining can never go below 0.\"",
+      "expected": "Order for 6 tickets on event 11 (capacity 5, remaining 5) returns 409 sold_out; remaining stays 5.",
+      "actual": "201 Created; remaining becomes -1 on the event.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 11,
+            "quantity": 6
+          },
+          "capture": {}
+        },
+        {
+          "method": "GET",
+          "path": "/events/11",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Price change retroactively changes existing orders' unitPriceCents, discount, and total",
+      "severity": "high",
+      "category": "business-rule",
+      "spec_rule": "\"A price change applies to orders created afterwards. Existing orders keep their unitPriceCents, discountCents, feeCents, and totalCents.\"",
+      "expected": "After admin changes event 4 price to 5000, alice's existing order keeps unitPriceCents 12000, discountCents 1200, totalCents 10950.",
+      "actual": "The existing order now shows unitPriceCents 5000, discountCents 1200, totalCents 3950.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 4,
+            "quantity": 1,
+            "promoCode": "FAN10"
+          },
+          "capture": {
+            "oid": "id"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "admin",
+            "password": "admin-pass"
+          },
+          "capture": {
+            "adm": "token"
+          }
+        },
+        {
+          "method": "PATCH",
+          "path": "/events/4",
+          "headers": {
+            "Authorization": "Bearer {{adm}}"
+          },
+          "body": {
+            "priceCents": 5000
+          },
+          "capture": {}
+        },
+        {
+          "method": "GET",
+          "path": "/orders/{{oid}}",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "FAN10 discount rounds half-cent down instead of to nearest cent with halves up",
+      "severity": "medium",
+      "category": "calculation",
+      "spec_rule": "\"FAN10 \u2014 10% off the subtotal, rounded to the nearest cent, halves rounded up.\"",
+      "expected": "Subtotal 1299 with FAN10: 129.9 rounds to 130 \u2192 discountCents 130, totalCents 1319.",
+      "actual": "discountCents is 129 and totalCents is 1320.",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "tok": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{tok}}"
+          },
+          "body": {
+            "eventId": 12,
+            "quantity": 1,
+            "promoCode": "FAN10"
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "GET /events/{id} for unknown event returns framework body instead of standard error shape",
+      "severity": "low",
+      "category": "contract",
+      "spec_rule": "\"Every error response has the status code listed below and this body shape: {\"error\": {\"code\": \"<machine_code>\", \"message\": \"<human text>\"}}. This applies to every endpoint, including unknown routes (404, code not_found).\" and \"GET /events/{id} ... 404 code not_found.\"",
+      "expected": "404 with body {\"error\": {\"code\": \"not_found\", \"message\": \"...\"}}.",
+      "actual": "404 with body {\"detail\": \"Not Found\"} (no error object, no code).",
+      "repro_steps": [
+        {
+          "method": "GET",
+          "path": "/events/999",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        }
+      ]
+    }
+  ],
+  "run": {
+    "model": "claude-haiku-5-5",
+    "effort": "medium",
+    "max_turns": 60,
+    "turns": 15,
+    "tool_calls": 70,
+    "stop_reason": "end_turn",
+    "served_by": [
+      "claude-haiku-5-5"
+    ],
+    "duration_s": 82.2,
+    "usage": {
+      "input_tokens": 32,
+      "output_tokens": 20669,
+      "cache_creation_input_tokens": 38252,
+      "cache_read_input_tokens": 218310
+    },
+    "estimated_cost_usd": 0.0173023,
+    "summary": "I filed 10 defects. Each was reproduced on a fresh instance, and the replays confirmed them.\n\n**What I tested**\n- **Authentication:** valid and invalid logins, login with multiple tokens, logout (the revoked token returns 401 and the other token stays valid), and requests with no token.\n- **Events:** listing with paging and bounds (`page=0`, `pageSize=51`, non-integer values, out-of-range pages), single-event lookup, and unknown routes.\n- **Order creation:** quantity bounds, unknown event, sales closed, promo codes (case-sensitivity, FAN10 and WELCOME5), the 8-ticket limit, the `Idempotency-Key` replay and conflict cases, and strict-body validation.\n- **Cancellation:** refund math, double cancel (`already_cancelled`), cancel by a non-owner (404), and visibility of orders to fans and admins.\n- **Admin event update:** price and capacity changes, the `capacity_below_sold` rule, and negative-price validation.\n\n**Defects reported**\n1. **Critical, security:** a fan can PATCH event prices and capacity (200 instead of 403).\n2. **High, calculation:** refund on cancel is the subtotal, not `totalCents - feeCents` (over-refund of 1500 cents in the repro).\n3. **High, business rule:** WELCOME5 can be redeemed repeatedly by the same user.\n4. **High, calculation:** promo discount can exceed the subtotal, giving negative totals (-50 cents).\n5. **High, calculation:** the 600-cent per-order fee cap is not applied (6 tickets gave a 900 fee).\n6. **High, validation:** quantity 7 is accepted, though the maximum is 6.\n7. **High, inventory:** sold-out is not enforced; an order for 6 on an event with 5 remaining succeeds and `remaining` goes to -1.\n8. **High, business rule:** an admin price change alters existing orders' `unitPriceCents`, discount, and totals.\n9. **Medium, calculation:** FAN10 rounds 129.9 down to 129 instead of rounding halves up to 130.\n10. **Low, contract:** `GET /events/{id}` for an unknown event returns `{\"detail\": \"Not Found\"}` rather than the standard error body with code `not_found`.\n\n**Not reproduced or not checked:** the `sold_out` check works only when the quantity exceeds `remaining` by a single order; I did not exhaust a sold-out event. Idempotency replay and conflict behaved as specified. The unknown-route 404 used the standard error shape."
+  }
+}
