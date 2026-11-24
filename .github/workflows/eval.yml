@@ -1,0 +1,51 @@
+name: Agent eval
+
+# Manual only: every run calls the Claude API and costs money.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Claude model ID
+        default: claude-opus-5-5
+      effort:
+        description: Effort level
+        type: choice
+        options: [low, medium, high, xhigh, max]
+        default: high
+      bugs:
+        description: "Seeded bugs: all | none | comma-separated IDs"
+        default: all
+      max_turns:
+        description: Turn budget for the agent
+        default: "60"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -e .
+      - name: Run agent and score
+        # Inputs go through env, never inline ${{ }} in the script, to avoid injection.
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODEL: ${{ inputs.model }}
+          EFFORT: ${{ inputs.effort }}
+          BUGS: ${{ inputs.bugs }}
+          MAX_TURNS: ${{ inputs.max_turns }}
+        run: >
+          qabench run --model "$MODEL" --effort "$EFFORT" --bugs "$BUGS"
+          --max-turns "$MAX_TURNS" --out results
+      - name: Publish scorecard
+        if: always()
+        run: cat results/*/scorecard.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-${{ inputs.model }}-${{ inputs.effort }}
+          path: results/

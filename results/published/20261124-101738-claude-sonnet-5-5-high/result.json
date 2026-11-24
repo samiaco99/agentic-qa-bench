@@ -1,0 +1,571 @@
+{
+  "bugs": [
+    "cancel-does-not-restock",
+    "cancel-twice-allowed",
+    "discount-exceeds-subtotal",
+    "events-pagination-overlap",
+    "not-found-error-contract",
+    "order-idor",
+    "order-quantity-upper-bound",
+    "oversell-by-one",
+    "promo-percent-rounding",
+    "welcome-promo-reuse"
+  ],
+  "score": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0,
+    "detected": {
+      "not-found-error-contract": [
+        1
+      ],
+      "events-pagination-overlap": [
+        2
+      ],
+      "order-quantity-upper-bound": [
+        3
+      ],
+      "oversell-by-one": [
+        4
+      ],
+      "promo-percent-rounding": [
+        5
+      ],
+      "discount-exceeds-subtotal": [
+        6
+      ],
+      "welcome-promo-reuse": [
+        7
+      ],
+      "order-idor": [
+        8
+      ],
+      "cancel-does-not-restock": [
+        9
+      ],
+      "cancel-twice-allowed": [
+        10
+      ]
+    },
+    "missed": [],
+    "false_positives": 0,
+    "invalid_repros": 0,
+    "duplicates": 0,
+    "severity_agreement": 0.8,
+    "verdicts": [
+      {
+        "finding": 1,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "not-found-error-contract"
+        ]
+      },
+      {
+        "finding": 2,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "events-pagination-overlap"
+        ]
+      },
+      {
+        "finding": 3,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "order-quantity-upper-bound"
+        ]
+      },
+      {
+        "finding": 4,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "oversell-by-one"
+        ]
+      },
+      {
+        "finding": 5,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "promo-percent-rounding"
+        ]
+      },
+      {
+        "finding": 6,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "discount-exceeds-subtotal"
+        ]
+      },
+      {
+        "finding": 7,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "welcome-promo-reuse"
+        ]
+      },
+      {
+        "finding": 8,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "order-idor"
+        ]
+      },
+      {
+        "finding": 9,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "cancel-does-not-restock"
+        ]
+      },
+      {
+        "finding": 10,
+        "verdict": "confirmed",
+        "attributed_to": [
+          "cancel-twice-allowed"
+        ]
+      }
+    ]
+  },
+  "findings": [
+    {
+      "title": "GET /events/{id} for a missing event returns non-conforming error body",
+      "severity": "low",
+      "category": "contract",
+      "spec_rule": "Every error response has ... this body shape: {\"error\": {\"code\": \"<machine_code>\", \"message\": \"<human text>\"}}.",
+      "expected": "404 with {\"error\": {\"code\": \"not_found\", \"message\": \"...\"}}",
+      "actual": "404 with {\"detail\": \"Not Found\"}",
+      "repro_steps": [
+        {
+          "method": "GET",
+          "path": "/events/99",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Pagination pages overlap (offset off by one)",
+      "severity": "medium",
+      "category": "functional",
+      "spec_rule": "Pages are disjoint and contiguous: concatenating pages 1..n yields every event exactly once, in order.",
+      "expected": "pageSize=5: page 1 = ids 1-5, page 2 = ids 6-10, page 3 = ids 11-12",
+      "actual": "page 2 = ids 5-9 (id 5 repeated), page 3 = ids 10-12 ... event 10 is skipped/overlapped inconsistently; pages are not disjoint",
+      "repro_steps": [
+        {
+          "method": "GET",
+          "path": "/events?pageSize=5&page=1",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        },
+        {
+          "method": "GET",
+          "path": "/events?pageSize=5&page=2",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Quantity above 6 is accepted when creating an order",
+      "severity": "high",
+      "category": "business-rule",
+      "spec_rule": "quantity must be between 1 and 6 inclusive, otherwise 400 code invalid_quantity.",
+      "expected": "400 invalid_quantity for quantity 7",
+      "actual": "201 order created with quantity 7",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 1,
+            "quantity": 7
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Order can oversell: quantity exceeding remaining by one is accepted, remaining goes negative",
+      "severity": "high",
+      "category": "inventory",
+      "spec_rule": "quantity must not exceed the event's remaining, otherwise 409 code sold_out. ... remaining can never go below 0.",
+      "expected": "409 sold_out when ordering 6 of event 11 (remaining 5)",
+      "actual": "201 created; event remaining becomes -1",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 11,
+            "quantity": 6
+          },
+          "capture": {}
+        },
+        {
+          "method": "GET",
+          "path": "/events/11",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "FAN10 discount is truncated instead of rounded to nearest cent (halves up)",
+      "severity": "high",
+      "category": "calculation",
+      "spec_rule": "FAN10 \u2014 10% off the subtotal, rounded to the nearest cent, halves rounded up.",
+      "expected": "1x1299 -> discount 130 (129.9); 5x1299=6495 -> discount 650 (649.5 half up)",
+      "actual": "discount 129 and 649 (rounded down)",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 12,
+            "quantity": 1,
+            "promoCode": "FAN10"
+          },
+          "capture": {}
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 12,
+            "quantity": 5,
+            "promoCode": "FAN10"
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "WELCOME5 discount exceeds subtotal, producing negative total",
+      "severity": "high",
+      "category": "calculation",
+      "spec_rule": "discountCents never exceeds the subtotal, so totalCents = subtotal - discountCents is never negative.",
+      "expected": "discountCents 300, totalCents 0 for 1x300 ticket",
+      "actual": "discountCents 500, totalCents -200",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 3,
+            "quantity": 1,
+            "promoCode": "WELCOME5"
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "WELCOME5 can be redeemed again after cancelling the order that used it",
+      "severity": "high",
+      "category": "business-rule",
+      "spec_rule": "WELCOME5 \u2014 Each user can redeem it once in total (a later cancellation does not give it back). A second redemption returns 400 code promo_already_used.",
+      "expected": "400 promo_already_used on the second WELCOME5 order",
+      "actual": "201, discount applied again",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 2,
+            "quantity": 1,
+            "promoCode": "WELCOME5"
+          },
+          "capture": {
+            "o": "id"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders/{{o}}/cancel",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": null,
+          "capture": {}
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 2,
+            "quantity": 1,
+            "promoCode": "WELCOME5"
+          },
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Any fan can read another user's order (broken object-level authorization)",
+      "severity": "critical",
+      "category": "security",
+      "spec_rule": "GET /orders/{id} \u2014 the order if the caller owns it or is an admin. Otherwise 404 code not_found.",
+      "expected": "404 not_found when bob reads alice's order",
+      "actual": "200 with alice's order",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "bob",
+            "password": "bob-pass"
+          },
+          "capture": {
+            "b": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 1,
+            "quantity": 1
+          },
+          "capture": {
+            "o": "id"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/orders/{{o}}",
+          "headers": {
+            "Authorization": "Bearer {{b}}"
+          },
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Cancelling an order does not restore event remaining",
+      "severity": "high",
+      "category": "inventory",
+      "spec_rule": "A confirmed order becomes cancelled ... and the event's remaining increases by the order's quantity.",
+      "expected": "remaining back to 200 after order+cancel on event 3",
+      "actual": "remaining stays 199",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 3,
+            "quantity": 1
+          },
+          "capture": {
+            "o": "id"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders/{{o}}/cancel",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": null,
+          "capture": {}
+        },
+        {
+          "method": "GET",
+          "path": "/events/3",
+          "headers": {},
+          "body": null,
+          "capture": {}
+        }
+      ]
+    },
+    {
+      "title": "Cancelling an already-cancelled order returns 200 instead of 409 already_cancelled",
+      "severity": "medium",
+      "category": "state",
+      "spec_rule": "Cancelling an order that is already cancelled returns 409 code already_cancelled and changes nothing.",
+      "expected": "409 already_cancelled on second cancel",
+      "actual": "200 with the cancelled order",
+      "repro_steps": [
+        {
+          "method": "POST",
+          "path": "/auth/login",
+          "headers": {},
+          "body": {
+            "username": "alice",
+            "password": "alice-pass"
+          },
+          "capture": {
+            "a": "token"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": {
+            "eventId": 3,
+            "quantity": 1
+          },
+          "capture": {
+            "o": "id"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/orders/{{o}}/cancel",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": null,
+          "capture": {}
+        },
+        {
+          "method": "POST",
+          "path": "/orders/{{o}}/cancel",
+          "headers": {
+            "Authorization": "Bearer {{a}}"
+          },
+          "body": null,
+          "capture": {}
+        }
+      ]
+    }
+  ],
+  "run": {
+    "model": "claude-sonnet-5-5",
+    "effort": "high",
+    "max_turns": 60,
+    "turns": 12,
+    "tool_calls": 57,
+    "stop_reason": "end_turn",
+    "served_by": [
+      "claude-sonnet-5-5"
+    ],
+    "duration_s": 80.5,
+    "usage": {
+      "input_tokens": 26,
+      "output_tokens": 12736,
+      "cache_creation_input_tokens": 27861,
+      "cache_read_input_tokens": 134942
+    },
+    "estimated_cost_usd": 0.2240529,
+    "summary": "I tested events, orders, promo codes, cancellation, authentication and the error contract, and filed 10 defects. All 10 reproduced on a fresh instance.\n\n**Defects found**\n1. **Missing event error shape (low):** `GET /events/99` returns `{\"detail\":\"Not Found\"}` instead of the standard error body. Unknown routes like `/nope` are correct.\n2. **Pagination overlap (medium):** with `pageSize=5`, page 2 starts at id 5, which page 1 already returned, so pages are not disjoint.\n3. **Quantity above 6 accepted (high):** an order for quantity 7 returns 201 instead of 400 `invalid_quantity`.\n4. **Oversell (high):** ordering 6 tickets for event 11, which has 5 remaining, returns 201 and leaves `remaining` at -1.\n5. **FAN10 rounding (high):** the discount is rounded down instead of to the nearest cent, halves up. A 1,299 subtotal gives 129 instead of 130, and 6,495 gives 649 instead of 650.\n6. **WELCOME5 negative total (high):** on a 300-cent ticket the discount is 500 and the total is -200, instead of a discount capped at 300 and a total of 0.\n7. **WELCOME5 reusable after cancel (high):** a user can redeem it again after cancelling the order that used it, instead of getting 400 `promo_already_used`.\n8. **Order read across users (critical):** bob can read alice's order with `GET /orders/{id}` and gets 200 instead of 404.\n9. **Cancel doesn't restore inventory (high):** cancelling an order leaves the event's `remaining` unchanged.\n10. **Second cancel returns 200 (medium):** cancelling an already-cancelled order returns 200 instead of 409 `already_cancelled`.\n\n**Checked and behaving as specified**\n- Login success and failure, and the 401 `unauthorized` response for a missing or bad token.\n- Page and `pageSize` bounds, and non-integer query and path parameters.\n- Rejection of extra fields and string quantities.\n- Rule order for 400 `invalid_quantity`, 404 for an unknown event, and 400 `invalid_promo_code`.\n- Case-sensitive promo codes.\n- Fans see only their own orders in `GET /orders`, and admins see all.\n- Non-owners get 404 on cancel.\n- Admins can cancel other users' orders."
+  }
+}

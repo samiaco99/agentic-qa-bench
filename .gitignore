@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+.env
+
+# Local runs. Copy the ones worth keeping into results/published/.
+results/*
+!results/README.md
+!results/published/

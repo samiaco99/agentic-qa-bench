@@ -1,0 +1,36 @@
+{
+  "bugs": [],
+  "score": {
+    "recall": null,
+    "precision": null,
+    "f1": null,
+    "detected": {},
+    "missed": [],
+    "false_positives": 0,
+    "invalid_repros": 0,
+    "duplicates": 0,
+    "severity_agreement": null,
+    "verdicts": []
+  },
+  "findings": [],
+  "run": {
+    "model": "claude-haiku-5-5",
+    "effort": "medium",
+    "max_turns": 40,
+    "turns": 14,
+    "tool_calls": 86,
+    "stop_reason": "end_turn",
+    "served_by": [
+      "claude-haiku-5-5"
+    ],
+    "duration_s": 69.4,
+    "usage": {
+      "input_tokens": 30,
+      "output_tokens": 16267,
+      "cache_creation_input_tokens": 25841,
+      "cache_read_input_tokens": 209291
+    },
+    "estimated_cost_usd": 0.013459535,
+    "summary": "I tested the API against the specification and found no defects that I could reproduce, so I filed no bug reports.\n\n**What I covered**\n- **Authentication:** logins for all three seeded accounts; wrong password (401 `invalid_credentials`); missing or malformed bearer header and unknown tokens (401 `unauthorized`); login body validation (missing field and wrong type both return 400 `validation_error`).\n- **Events:** list pagination (default values, `page=0`, `pageSize=51`, non-integer and fractional values, page beyond the end, and concatenated pages matching `total`); single event lookup, including a non-integer ID and a missing ID (404).\n- **Order creation:** quantity bounds (0 and 7 rejected, 6 accepted); string, float, boolean, and missing quantity all rejected; unknown event (404); unknown, lowercase, whitespace-padded, and empty promo codes rejected; `promoCode: null` accepted; extra fields and a missing body rejected.\n- **Pricing:** FAN10 rounding, including 999.8 \u2192 1000 and 779.4 \u2192 779 and 389.7 \u2192 390; WELCOME5 capped at the subtotal (total 0 on a 300-cent ticket).\n- **Promo rules:** WELCOME5 rejected on a second use (`promo_already_used`); still rejected after the first order was cancelled; a rejected order does not consume it; rule order is respected (quantity, then event, then promo, then sold-out).\n- **Inventory:** `remaining` decreases on purchase and increases on cancellation, including admin cancellation; sold-out at exact capacity (5 of 5, then 0 left); 10 sequential purchases of 6 on a 60-seat event stop exactly at 0 with no overselling.\n- **Cancellation and visibility:** owner cancels (200, `cancelled`); double cancel (409 `already_cancelled`); a non-owner gets 404 and never 403; admin can cancel and read any order; fans' order lists contain only their own orders; admin's list contains all orders.\n\n**What I did not cover:** true parallel requests. The tool runs calls one after another, so the overselling test only confirms sequential correctness, not race-condition safety under concurrent load."
+  }
+}

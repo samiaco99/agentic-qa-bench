@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentic-qa-bench"
+version = "0.1.0"
+description = "A benchmark that measures whether an AI QA agent finds real bugs: seeded defects, differential replay oracle, precision/recall/cost scorecard."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "samiaco99" }]
+dependencies = [
+    "anthropic>=2.7,<3",
+    "fastapi>=0.162",
+    "httpx>=0.28",
+    "mcp>=2.3,<3",
+    "pydantic>=2.14",
+    "uvicorn>=0.54",
+]
+
+[project.optional-dependencies]
+dev = ["mypy>=2.4", "pytest>=9.2", "ruff>=0.17"]
+
+[project.scripts]
+qabench = "qabench.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qabench"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+packages = ["qabench"]
+mypy_path = "src"
